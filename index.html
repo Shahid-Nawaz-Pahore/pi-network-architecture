@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pi Network Batch Payment Tool — Architecture</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.6.1/mermaid.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --pi-purple: #7B2FBE;
+    --pi-gold: #F5A623;
+    --pi-cyan: #00D4FF;
+    --pi-green: #00FF88;
+    --pi-red: #FF4444;
+    --bg-dark: #050A14;
+    --bg-panel: #0A1628;
+    --bg-card: #0F1F3D;
+    --border: rgba(0, 212, 255, 0.2);
+    --text: #C8D8F0;
+    --text-bright: #E8F4FF;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg-dark);
+    color: var(--text);
+    font-family: 'Rajdhani', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Animated grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 40px 24px;
+  }
+
+  /* Header */
+  .header {
+    text-align: center;
+    margin-bottom: 60px;
+  }
+
+  .header .badge {
+    display: inline-block;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: var(--pi-cyan);
+    border: 1px solid var(--pi-cyan);
+    padding: 4px 14px;
+    letter-spacing: 3px;
+    margin-bottom: 16px;
+    animation: pulse-border 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-border {
+    0%, 100% { border-color: rgba(0,212,255,0.4); color: rgba(0,212,255,0.6); }
+    50% { border-color: var(--pi-cyan); color: var(--pi-cyan); }
+  }
+
+  .header h1 {
+    font-size: clamp(28px, 5vw, 52px);
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--text-bright);
+    line-height: 1.1;
+  }
+
+  .header h1 span {
+    color: var(--pi-gold);
+  }
+
+  .header .subtitle {
+    margin-top: 12px;
+    font-size: 15px;
+    color: rgba(200,216,240,0.5);
+    letter-spacing: 1px;
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  .node-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 20px;
+    background: rgba(0,255,136,0.05);
+    border: 1px solid rgba(0,255,136,0.3);
+    padding: 8px 20px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    color: var(--pi-green);
+  }
+
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--pi-green);
+    animation: blink 1.5s ease-in-out infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.2; }
+  }
+
+  /* Tab navigation */
+  .tabs {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 32px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .tab {
+    padding: 12px 32px;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    color: rgba(200,216,240,0.4);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: all 0.3s;
+  }
+
+  .tab:hover { color: var(--pi-cyan); }
+
+  .tab.active {
+    color: var(--pi-cyan);
+    border-bottom-color: var(--pi-cyan);
+    background: rgba(0,212,255,0.04);
+  }
+
+  /* Diagram panels */
+  .diagram-panel {
+    display: none;
+    animation: fadeIn 0.4s ease;
+  }
+
+  .diagram-panel.active { display: block; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .panel-header {
+    margin-bottom: 24px;
+  }
+
+  .panel-header h2 {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--text-bright);
+  }
+
+  .panel-header p {
+    font-size: 14px;
+    color: rgba(200,216,240,0.5);
+    margin-top: 4px;
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  .diagram-box {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    padding: 32px 24px;
+    overflow-x: auto;
+    position: relative;
+  }
+
+  .diagram-box::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--pi-cyan), var(--pi-purple), transparent);
+  }
+
+  /* Mermaid overrides */
+  .mermaid {
+    display: flex;
+    justify-content: center;
+  }
+
+  /* Legend */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-top: 20px;
+    padding: 16px 20px;
+    background: rgba(10,22,40,0.8);
+    border: 1px solid rgba(0,212,255,0.1);
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-family: 'Share Tech Mono', monospace;
+    color: rgba(200,216,240,0.6);
+  }
+
+  .legend-dot {
+    width: 10px; height: 10px;
+    border-radius: 2px;
+  }
+
+  /* Footer */
+  .footer {
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: gap;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: rgba(200,216,240,0.3);
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <div class="header">
+    <div class="badge">ARCHITECTURE DOCS v1.0</div>
+    <h1>Pi Network <span>Batch Payment</span> Tool</h1>
+    <div class="subtitle">Stellar Protocol 19 · Horizon 2.23.1 · Network: "Pi Network"</div>
+    <div class="node-status">
+      <div class="dot"></div>
+      NODE LIVE · 4.194.35.14:31401 · LEDGER #25,360,444
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('flow')">SYSTEM FLOW</button>
+    <button class="tab" onclick="showTab('sequence')">SEQUENCE DIAGRAM</button>
+    <button class="tab" onclick="showTab('component')">COMPONENT MAP</button>
+  </div>
+
+  <!-- FLOW DIAGRAM -->
+  <div id="flow" class="diagram-panel active">
+    <div class="panel-header">
+      <h2>SYSTEM FLOW DIAGRAM</h2>
+      <p>End-to-end operational flow from input to confirmed blockchain settlement</p>
+    </div>
+    <div class="diagram-box">
+      <div class="mermaid">
+flowchart TD
+    A([🖥️ OPERATOR]) --> B[Launch .exe Application]
+    B --> C[Enter Sender Secret Key]
+    C --> D[Import wallet.txt File]
+
+    D --> E{Validate Wallets}
+    E -->|Invalid addresses found| F[⚠️ Flag & Remove Invalids\nShow error list]
+    F --> G[Cleaned Wallet List]
+    E -->|All valid| G
+
+    G --> H[Set Payment Amounts\nFixed or Per-Wallet Custom]
+    H --> I[📋 PRE-FLIGHT SUMMARY\nTotal wallets · Total Pi · Est. fees]
+
+    I --> J{Operator Confirms?}
+    J -->|❌ Cancel| K([ABORT])
+    J -->|✅ Confirm| L
+
+    L[🔗 Connect to Horizon Node\n4.194.35.14:31401] --> M{Node Synced?}
+    M -->|❌ Sync lag detected| N[⏳ Wait & Retry\nMax 3 attempts]
+    N --> M
+    M -->|✅ Synced| O
+
+    O[Fetch Sender Account\nSequence Number] --> P[Build Batch Bundles\n100 ops per transaction]
+
+    P --> Q[Sign Transaction\nwith Secret Key]
+    Q --> R[Submit to Horizon\nPi Network Passphrase]
+
+    R --> S{Response?}
+    S -->|✅ Success| T[✅ Mark Wallets CONFIRMED\nStore TX Hash]
+    S -->|⚠️ Rate Limited| U[⏳ Exponential Backoff\nRetry Queue]
+    S -->|❌ Failed| V[❌ Mark FAILED\nLog Error Code]
+
+    U --> R
+    V --> W{More wallets in queue?}
+    T --> W
+    W -->|Yes - next bundle| P
+    W -->|No - all done| X
+
+    X[📊 Generate Final Report] --> Y[Export payments.csv\nWallet · Amount · TXHash · Status]
+    Y --> Z([✅ BATCH COMPLETE])
+
+    style A fill:#1a2744,stroke:#00D4FF,color:#E8F4FF
+    style Z fill:#0d2e1a,stroke:#00FF88,color:#00FF88
+    style K fill:#2e0d0d,stroke:#FF4444,color:#FF4444
+    style I fill:#1f1535,stroke:#7B2FBE,color:#C8B8FF
+    style X fill:#1a2744,stroke:#F5A623,color:#F5A623
+      </div>
+    </div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#00D4FF"></div> OPERATOR / SYSTEM</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#7B2FBE"></div> VALIDATION STAGE</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#00FF88"></div> SUCCESS STATE</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#FF4444"></div> FAILURE / ABORT</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#F5A623"></div> REPORTING</div>
+    </div>
+  </div>
+
+  <!-- SEQUENCE DIAGRAM -->
+  <div id="sequence" class="diagram-panel">
+    <div class="panel-header">
+      <h2>SEQUENCE DIAGRAM</h2>
+      <p>Actor-level message flow between all system components per transaction lifecycle</p>
+    </div>
+    <div class="diagram-box">
+      <div class="mermaid">
+sequenceDiagram
+    actor OP as 🧑 Operator
+    participant APP as 🖥️ App (.exe)
+    participant VAL as 🔍 Validator
+    participant BATCH as ⚡ Batch Engine
+    participant SIGN as 🔐 Signer
+    participant NODE as 🌐 Horizon Node
+    participant LOG as 📁 Logger
+
+    OP->>APP: Launch application
+    APP->>OP: Prompt for Secret Key
+
+    OP->>APP: Enter secret key + wallet.txt
+    APP->>VAL: Send raw wallet list
+
+    VAL->>VAL: Check address format (Stellar G...)
+    VAL->>VAL: Check for duplicates
+    VAL-->>APP: Return clean list + error report
+    APP->>OP: Show pre-flight summary (wallets, Pi total, fees)
+
+    OP->>APP: ✅ CONFIRM
+
+    APP->>NODE: GET /accounts/{sender_id}
+    NODE-->>APP: Return account + sequence number
+    APP->>NODE: GET / (health check)
+    NODE-->>APP: Ledger #25,360,444 ✅ synced
+
+    loop Every 100 wallets (1 transaction bundle)
+        APP->>BATCH: Build transaction (100 payment ops)
+        BATCH->>BATCH: Increment sequence number
+        BATCH->>BATCH: Set network passphrase "Pi Network"
+        BATCH-->>SIGN: Unsigned transaction XDR
+
+        SIGN->>SIGN: Sign with operator secret key
+        SIGN-->>NODE: POST /transactions (signed XDR)
+
+        alt ✅ Transaction Accepted
+            NODE-->>APP: 200 OK + TX Hash
+            APP->>LOG: Write CONFIRMED · hash · wallets
+            APP->>OP: Real-time update: ✅ batch N confirmed
+        else ⚠️ Rate Limited (429)
+            NODE-->>APP: 429 Too Many Requests
+            APP->>APP: Exponential backoff (2s, 4s, 8s)
+            APP-->>NODE: Retry POST /transactions
+        else ❌ Transaction Failed
+            NODE-->>APP: 400 + error details
+            APP->>LOG: Write FAILED · error code · wallets
+            APP->>OP: Real-time update: ❌ batch N failed
+        end
+    end
+
+    APP->>LOG: Finalize payments.csv
+    LOG-->>OP: Export complete: wallet · amount · txhash · status
+    APP->>OP: 🎉 BATCH COMPLETE — full report ready
+      </div>
+    </div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#00FF88"></div> SUCCESS PATH</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#F5A623"></div> RETRY PATH</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#FF4444"></div> FAILURE PATH</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#00D4FF"></div> LOOP = 1 bundle per 100 wallets</div>
+    </div>
+  </div>
+
+  <!-- COMPONENT MAP -->
+  <div id="component" class="diagram-panel">
+    <div class="panel-header">
+      <h2>COMPONENT ARCHITECTURE MAP</h2>
+      <p>Module breakdown and internal dependency graph of the entire application</p>
+    </div>
+    <div class="diagram-box">
+      <div class="mermaid">
+graph LR
+    subgraph UI ["🖥️  USER INTERFACE LAYER"]
+        UI1[Main Window\n.exe Shell]
+        UI2[Status Dashboard\nReal-time updates]
+        UI3[Preview Panel\nPre-flight summary]
+    end
+
+    subgraph CORE ["⚙️  CORE ENGINE"]
+        C1[File Parser\n.txt → wallet array]
+        C2[Wallet Validator\nFormat + dedup check]
+        C3[Amount Manager\nFixed / custom per wallet]
+        C4[Batch Builder\n100 ops per tx bundle]
+        C5[Sequence Manager\nAuto-increment tracker]
+    end
+
+    subgraph CRYPTO ["🔐  CRYPTO / SIGNING"]
+        CR1[Key Manager\nSecret key handler]
+        CR2[Transaction Signer\nStellar XDR builder]
+        CR3[Network Config\nPassphrase: Pi Network\nProtocol: 19]
+    end
+
+    subgraph NET ["🌐  NETWORK LAYER"]
+        N1[Horizon Client\nstellar-sdk Server]
+        N2[Health Checker\nLedger sync verify]
+        N3[Submitter\nPOST /transactions]
+        N4[Retry Handler\nExponential backoff]
+    end
+
+    subgraph OUT ["📁  OUTPUT LAYER"]
+        O1[Logger\nTX hash · status · error]
+        O2[CSV Exporter\npayments.csv]
+        O3[Error Reporter\nFailed wallet list]
+    end
+
+    UI1 --> C1
+    UI1 --> CR1
+    C1 --> C2
+    C2 --> C3
+    C3 --> UI3
+    UI3 --> C4
+    C4 --> C5
+    C5 --> CR2
+    CR1 --> CR2
+    CR3 --> CR2
+    CR2 --> N3
+    N1 --> N2
+    N2 --> C5
+    N3 --> N4
+    N3 --> O1
+    N4 --> N3
+    O1 --> O2
+    O1 --> O3
+    O2 --> UI2
+    O3 --> UI2
+
+    style UI fill:#0a1628,stroke:#00D4FF
+    style CORE fill:#0f1f3d,stroke:#7B2FBE
+    style CRYPTO fill:#1a0d2e,stroke:#F5A623
+    style NET fill:#0d2030,stroke:#00D4FF
+    style OUT fill:#0d2e1a,stroke:#00FF88
+      </div>
+    </div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#00D4FF"></div> UI / NETWORK LAYER</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#7B2FBE"></div> CORE ENGINE</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#F5A623"></div> CRYPTO / SIGNING</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#00FF88"></div> OUTPUT / LOGGING</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span>Pi Network Batch Payment Tool · Architecture v1.0</span>
+    <span>Horizon 2.23.1 · Stellar Protocol 19 · "Pi Network" Passphrase</span>
+  </div>
+
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      darkMode: true,
+      background: '#0A1628',
+      primaryColor: '#0F1F3D',
+      primaryTextColor: '#C8D8F0',
+      primaryBorderColor: '#00D4FF',
+      lineColor: '#00D4FF',
+      secondaryColor: '#1a2744',
+      tertiaryColor: '#0F1F3D',
+      edgeLabelBackground: '#050A14',
+      nodeTextColor: '#E8F4FF',
+      clusterBkg: '#0a1628',
+      clusterBorder: '#7B2FBE',
+      titleColor: '#E8F4FF',
+      actorBkg: '#0F1F3D',
+      actorBorder: '#00D4FF',
+      actorTextColor: '#E8F4FF',
+      actorLineColor: '#00D4FF',
+      signalColor: '#00D4FF',
+      signalTextColor: '#C8D8F0',
+      labelBoxBkgColor: '#0A1628',
+      labelBoxBorderColor: '#7B2FBE',
+      labelTextColor: '#C8D8F0',
+      loopTextColor: '#F5A623',
+      noteBorderColor: '#F5A623',
+      noteBkgColor: '#1a0d2e',
+      noteTextColor: '#E8F4FF',
+      activationBorderColor: '#7B2FBE',
+      activationBkgColor: '#1f1535',
+      sequenceNumberColor: '#050A14',
+    },
+    flowchart: { curve: 'basis', padding: 20 },
+    sequence: { showSequenceNumbers: true, actorMargin: 80, messageMargin: 30 }
+  });
+
+  function showTab(name) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.diagram-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById(name).classList.add('active');
+    event.target.classList.add('active');
+  }
+</script>
+
+</body>
+</html>
